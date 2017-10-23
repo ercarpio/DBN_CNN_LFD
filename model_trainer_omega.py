@@ -7,7 +7,7 @@ import tensorflow as tf
 from tensorflow.python.client import timeline
 
 # model structure
-from dqn_model_omega import *
+from dqn_model_omega_dbn import *
 
 # file io
 from basic_tfrecord_rw import parse_sequence_example
