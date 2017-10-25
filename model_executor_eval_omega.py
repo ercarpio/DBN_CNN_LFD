@@ -4,7 +4,7 @@
 
 from __future__ import print_function
 
-from dqn_model_omega import *
+from dqn_model_omega_dbn import *
 from input_pipeline import *
 
 import tensorflow as tf
@@ -19,8 +19,8 @@ from dbn_cnn_interface import DbnCnnInterface
 
 NUM_EPOCHS = 80000
 GAMMA = 0.9
-ALPHA = 1e-4
-NUM_ITER = 600  #100,600
+ALPHA = 1e-5
+NUM_ITER = 100  #100,600
 FOLDS = 1
 NUM_REMOVED = 1
 
@@ -46,7 +46,7 @@ if __name__ == '__main__':
     #################################
     # Read contents of TFRecord file
     #################################
-    path = "../tfrecords_final_eval/"
+    path = "../tfrecords_balanced/"
     filenames = [f for f in os.listdir(path) if isfile(join(path, f))]
     filenames = [path + x for x in filenames] #if (x.find("g") >= 0 and x.find("ga") < 0)]
     filenames.sort()
@@ -61,8 +61,9 @@ if __name__ == '__main__':
     #################################
     # Generate Model
     #################################
-    chkpt = "../container_files/omega_2/model.ckpt"
-    dqn = DQNModel(graphbuild, batch_size=BATCH_SIZE, learning_rate=ALPHA, filename=chkpt, log_dir="LOG_DIR")
+    chkpt = "../container_files/test/omega_0/model.ckpt"
+    dqn = DQNModel(graphbuild, batch_size=BATCH_SIZE, learning_rate=ALPHA,
+                   filename=chkpt, log_dir="LOG_DIR", validating=True)
 
     #################################
     # Train Model
@@ -119,7 +120,7 @@ if __name__ == '__main__':
             dqn.y_ph: label_data
             , dqn.partitions_ph: partitions_1
             , dqn.train_ph: False
-            , dqn.prompts_ph: dbn_output
+            , dqn.temporal_info_ph: dbn_output
         })
 
         print("name:", names)
@@ -163,7 +164,7 @@ if __name__ == '__main__':
     print("bins", bins)
     # print("cat_2"[:-2].find("_2"))
 
-    print("Prompt Accuracy:", (len(good)) / float(len(good) + len(failed)))
+    print("Accuracy:", (len(good)) / float(len(good) + len(failed)))
 
     print("Prompt Accuracy: ", bins[0][0] / float(bins[0][0] + bins[0][1]))
     print("Reward Accuracy: ", bins[1][0] / float(bins[1][0] + bins[1][1]))

@@ -1,4 +1,4 @@
-# dqn_model_omega_dbn.py
+# dqn_model_omega_dbn_integration.py
 # Estuardo Carpio-Mazariegos
 # 10/24/2017
 
@@ -8,13 +8,14 @@ from __future__ import print_function
 import tensorflow as tf
 import numpy as np
 
+# incpetion network
+from models.slim.nets.inception_resnet_v2 import inception_resnet_v2
+
 # contains information relating to input data size
 from constants import *
 
-# inception network
-from models.slim.nets.inception_resnet_v2 import inception_resnet_v2
-
-CHECKPOINT = "inception_resnet_v2_2016_08_30.ckpt"
+CHECKPOINT = "../DRQN/inception_resnet_v2_2016_08_30.ckpt"
+CHECKPOINT_NP = "np_omega/model.ckpt"
 slim = tf.contrib.slim
 
 # network layer information for P_CNN
@@ -46,8 +47,9 @@ class DQNModel:
     learning_rate - float, speed at which the model trains (1e-5 by default)
     log_dir - directory to store summary information (no directory listed by default)
     """
-    def __init__(self, graphbuild=[1] * TOTAL_PARAMS, batch_size=1,
-                 filename="", name="dqn", learning_rate=1e-5, log_dir="", validating=False):
+
+    def __init__(self, graphbuild=[1] * TOTAL_PARAMS, batch_size=1, filename="",
+                 name="dqn", learning_rate=1e-5, log_dir=""):
         self.graphbuild = graphbuild
         self.__batch_size = batch_size
         self.__name = name
@@ -80,8 +82,7 @@ class DQNModel:
 
         self.variables_aud = {
             "W1": weight_variable("W_conv1_aud", [aud_filter_sizes[0][0],
-                                                  aud_filter_sizes[0][1], aud_dtype["num_c"],
-                                                  aud_layer_elements[1]]),
+                                                  aud_filter_sizes[0][1], aud_dtype["num_c"], aud_layer_elements[1]]),
             "b1": bias_variable("b_conv1_aud", [aud_layer_elements[1]]),
             "W2": weight_variable("W_conv2_aud", [aud_filter_sizes[1][0],
                                                   aud_filter_sizes[1][1], aud_layer_elements[1],
@@ -167,7 +168,7 @@ class DQNModel:
         # placeholder for boolean listing whether the network is being trained or evaluated
         self.train_ph = tf.placeholder("bool", [], name="train_placeholder")
 
-        # placeholder for how many prompts have been delivered
+        # placeholder for temporal information
         self.temporal_info_ph = tf.placeholder("float32", [layer_elements[-1]],
                                                name="temporal_info_placeholder")
 
@@ -189,10 +190,24 @@ class DQNModel:
 
         variables_to_restore = []
         if (self.graphbuild[0]):
-            slim.assign_from_checkpoint_fn(CHECKPOINT, slim.get_model_variables())
+            for var in slim.get_model_variables():
+                excluded = False
+                for exclusion in exclusions:
+                    if var.op.name.startswith(exclusion):
+                        name = var.name[var.name.find('/') + 1:-2]
+                        self.variables_img[name] = var
+                        excluded = True
+                        break
 
-        variables_to_train = [x for x in tf.trainable_variables()
-                              if x.op.name in ["W_fc", "b_fc", "W_fc_hat", "b_fc_hat"]]
+                if not excluded:
+                    variables_to_restore.append(var)
+
+            t1 = tf.Print(self.variables_pnt["W1"], [self.variables_pnt["W1"]], message="before: ")
+            t3 = slim.assign_from_checkpoint_fn(CHECKPOINT, variables_to_restore)
+            t4 = slim.assign_from_checkpoint_fn(CHECKPOINT_NP, tf.trainable_variables())
+            t2 = tf.Print(self.variables_pnt["W1"], [self.variables_pnt["W1"]], message="after: ")
+
+        variables_to_train = [x for x in tf.trainable_variables() if x not in variables_to_restore]
 
         self.variables_img_main = {}
         self.variables_img_hat = {}
@@ -204,8 +219,8 @@ class DQNModel:
 
         self.cross_entropy = tf.reduce_mean(tf.square(self.diff))
         tf.summary.scalar('cross_entropy', self.cross_entropy)
-        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.__alpha).minimize(
-            self.cross_entropy, var_list=variables_to_train)
+        self.optimizer = tf.train.AdamOptimizer(learning_rate=self.__alpha).minimize(self.cross_entropy,
+                                                                                     var_list=variables_to_train)
 
         self.correct_pred = tf.equal(tf.argmax(self.pred, 1), tf.argmax(self.y_ph, 1))
         self.accuracy = tf.reduce_mean(tf.cast(self.correct_pred, tf.float32))
@@ -214,14 +229,9 @@ class DQNModel:
         self.predict_output = tf.argmax(self.pred, 1)
 
         # session
-        self.sess = tf.InteractiveSession(config=tf.ConfigProto(allow_soft_placement=True))
+        self.sess = tf.InteractiveSession()
 
-        self.loader = tf.train.Saver(var_list=[x for x in tf.trainable_variables()
-                                              if x not in variables_to_train])
         self.saver = tf.train.Saver()
-
-        if validating:
-            self.loader = self.saver
 
         self.merged_summary = tf.summary.merge_all()
         self.train_writer = tf.summary.FileWriter(self.log_dir + '/train', self.sess.graph)
@@ -231,14 +241,18 @@ class DQNModel:
         if (len(filename) == 0):
             init_op = tf.global_variables_initializer()
             self.sess.run(init_op)  # remove when using a saved file
+            self.sess.run(t1)
+            t3(self.sess)
+            t4(self.sess)
+            self.sess.run(t2)
         else:
-            init_op = tf.global_variables_initializer()
-            self.sess.run(init_op)
             print("RESTORING VALUES")
-            self.loader.restore(self.sess, filename)
+            self.saver.restore(self.sess, filename)
+
+        print("TEST")
 
     def saveModel(self, name="model.ckpt", save_dir=""):
-        path = self.saver.save(self.sess, save_dir + '/' + name)
+        self.saver.save(self.sess, save_dir + '/' + name)
 
     def restore_q_hat_vars(self, src, dst):
         arr = []
@@ -260,12 +274,12 @@ class DQNModel:
         self.restore_q_hat_vars(self.variables_aud, self.variables_aud_hat)
         self.restore_q_hat_vars(self.variables_lstm, self.variables_lstm_hat)
 
-    def genPrediction(self, num_frames, img_data, pnt_data, aud_data, num_prompts):
+    def genPrediction(self, num_frames, img_data, pnt_data, aud_data, temporal_info):
         # used by the ASD robot
         partitions = np.zeros((1, num_frames))
         print("partitions.shape: ", partitions.shape)
         partitions[0][-1] = 1
-        print("num_prompts: ", num_prompts)
+        print("temporal_info: ", temporal_info)
         with tf.variable_scope(self.__name) as scope:
             prediction = self.sess.run(self.pred, feed_dict={  # generate_pred
                 self.seq_length_ph: [num_frames],
@@ -274,7 +288,7 @@ class DQNModel:
                 self.aud_ph: aud_data,
                 self.partitions_ph: partitions,
                 self.train_ph: False,
-                self.temporal_info_ph: num_prompts
+                self.temporal_info_ph: temporal_info
             })
             print(prediction, np.max(prediction), np.argmax(prediction))
             return np.argmax(prediction)  # prediction[0]
@@ -344,25 +358,21 @@ class DQNModel:
             ##### THE MODEL #####
             #####################
 
-    def model(self, seq_length, img_ph, pnt_ph, aud_ph, partitions_ph, train_ph,
-              prompts_ph, variable_scope, variable_scope2, var_img, var_pnt,
-              var_aud, var_lstm, incep_reuse=True):  #
+    def model(self, seq_length, img_ph, pnt_ph, aud_ph, partitions_ph, train_ph, prompts_ph, variable_scope,
+              variable_scope2, var_img, var_pnt, var_aud, var_lstm, incep_reuse=True):  #
 
 
         def process_vars(seq, data_type):
             # cast inputs to the correct data type
             seq_inp = tf.cast(seq, tf.float32)
             return tf.reshape(seq_inp,
-                              (self.__batch_size, -1, data_type["cmp_h"],
-                               data_type["cmp_w"], data_type["num_c"]))
+                              (self.__batch_size, -1, data_type["cmp_h"], data_type["cmp_w"], data_type["num_c"]))
 
         def convolve_data_inception(input_data, val, n, dtype):
             data = tf.reshape(input_data, [-1, 299, 299, 3])
             logits, end_points = inception_resnet_v2(data,
-                                                     num_classes=output_sizes[-1] *
-                                                                 output_sizes[-1] *
-                                                                 layer_elements[-2],
-                                                     is_training=False, reuse=incep_reuse)
+                                                     num_classes=output_sizes[-1] * output_sizes[-1] * layer_elements[
+                                                         -2], is_training=False, reuse=incep_reuse)
             return logits
 
         def check_legal_inputs(tensor, name):
@@ -373,10 +383,8 @@ class DQNModel:
             def pad_tf(x, p):
                 return tf.pad(x, [[0, 0], [p, p], [p, p], [0, 0]], "CONSTANT")
 
-            def gen_convolved_output(sequence, W, b, stride, num_hidden,
-                                     new_size, train_ph, padding='SAME'):
-                conv = tf.nn.conv2d(sequence, W,
-                                    strides=[1, stride, stride, 1], padding=padding) + b
+            def gen_convolved_output(sequence, W, b, stride, num_hidden, new_size, train_ph, padding='SAME'):
+                conv = tf.nn.conv2d(sequence, W, strides=[1, stride, stride, 1], padding=padding) + b
                 return tf.nn.relu(conv)
 
             input_data = tf.reshape(input_data, [-1, dtype["cmp_h"], dtype["cmp_w"], dtype["num_c"]],
@@ -486,121 +494,116 @@ class DQNModel:
         inp_data = [0] * TOTAL_PARAMS
         conv_inp = [0] * TOTAL_PARAMS
 
-        with tf.device('/gpu:0'):
+        # Inception Network (INRV2)
+        if (self.graphbuild[0]):
+            val = 0
+            inp_data[val] = process_vars(img_ph, img_dtype)
+            conv_inp[val] = convolve_data_inception(inp_data[val], val, "img", img_dtype)
 
-            # Inception Network (INRV2)
-            if (self.graphbuild[0]):
-                val = 0
-                inp_data[val] = process_vars(img_ph, img_dtype)
-                conv_inp[val] = convolve_data_inception(inp_data[val], val, "img", img_dtype)
+        with variable_scope as scope:
 
-            with variable_scope as scope:
+            # P_CNN
+            if (self.graphbuild[1]):
+                val = 1
+                inp_data[val] = process_vars(pnt_ph, pnt_dtype)
+                conv_inp[val] = convolve_data_3layer_pnt(inp_data[val], val, var_pnt, "pnt", pnt_dtype)
 
-                # P_CNN
-                if (self.graphbuild[1]):
-                    val = 1
-                    inp_data[val] = process_vars(pnt_ph, pnt_dtype)
-                    conv_inp[val] = convolve_data_3layer_pnt(inp_data[val], val, var_pnt, "pnt", pnt_dtype)
+            # A_CNN
+            if (self.graphbuild[2]):
+                val = 2
+                inp_data[val] = process_vars(aud_ph, aud_dtype)
+                conv_inp[val] = convolve_data_3layer_aud(inp_data[val], val, var_aud, "aud", aud_dtype)
 
-                # A_CNN
-                if (self.graphbuild[2]):
-                    val = 2
-                    inp_data[val] = process_vars(aud_ph, aud_dtype)
-                    conv_inp[val] = convolve_data_3layer_aud(inp_data[val], val, var_aud, "aud", aud_dtype)
+            # ---------------------------------------
+            # Combine Output of CNN Stacks
+            # ---------------------------------------
+            combined_data = None
+            for i in range(TOTAL_PARAMS):
 
-                # ---------------------------------------
-                # Combine Output of CNN Stacks
-                # ---------------------------------------
-                combined_data = None
-                for i in range(TOTAL_PARAMS):
+                if (self.graphbuild[i]):
+                    if (i < 2):
+                        conv_inp[i] = tf.reshape(conv_inp[i], [self.__batch_size, -1,
+                                                               output_sizes[-1] * output_sizes[-1] * layer_elements[
+                                                                   -2]], name="combine_reshape")
+                    else:
+                        conv_inp[i] = tf.reshape(conv_inp[i], [self.__batch_size, -1,
+                                                               aud_output_sizes[-1][0] * aud_output_sizes[-1][0] *
+                                                               aud_layer_elements[-2]], name="combine_reshape_aud")
 
-                    if (self.graphbuild[i]):
-                        if (i < 2):
-                            conv_inp[i] = tf.reshape(conv_inp[i], [self.__batch_size, -1,
-                                                                   output_sizes[-1] * output_sizes[-1] * layer_elements[
-                                                                       -2]], name="combine_reshape")
-                        else:
-                            conv_inp[i] = tf.reshape(conv_inp[i], [self.__batch_size, -1,
-                                                                   aud_output_sizes[-1][0] * aud_output_sizes[-1][0] *
-                                                                   aud_layer_elements[-2]], name="combine_reshape_aud")
+                    if (combined_data == None):
+                        combined_data = conv_inp[i]
+                    else:
+                        combined_data = tf.concat([combined_data, conv_inp[i]], 2)
 
-                        if (combined_data == None):
-                            combined_data = conv_inp[i]
-                        else:
-                            combined_data = tf.concat([combined_data, conv_inp[i]], 2)
+                    combined_data = check_legal_inputs(combined_data, "combined_data")
 
-                        combined_data = check_legal_inputs(combined_data, "combined_data")
+            # capture variables before changing scope
+            W_lstm = var_lstm["W_lstm"]
+            b_lstm = var_lstm["b_lstm"]
+            W_fc = var_lstm["W_fc"]
+            b_fc = var_lstm["b_fc"]
 
-                # capture variables before changing scope
-                W_lstm = var_lstm["W_lstm"]
-                b_lstm = var_lstm["b_lstm"]
-                W_fc = var_lstm["W_fc"]
-                b_fc = var_lstm["b_fc"]
+        with variable_scope2 as scope:
+            # ---------------------------------------
+            # Internal Temporal Information (LSTM)
+            # ---------------------------------------
+            lstm_cell = tf.contrib.rnn.LSTMCell(layer_elements[-2],
+                                                use_peepholes=False,
+                                                cell_clip=None,
+                                                initializer=None,
+                                                num_proj=None,
+                                                proj_clip=None,
+                                                forget_bias=1.0,
+                                                state_is_tuple=True,
+                                                activation=None,
+                                                reuse=None
+                                                )
 
-            with variable_scope2 as scope:
-                # ---------------------------------------
-                # Internal Temporal Information (LSTM)
-                # ---------------------------------------
-                lstm_cell = tf.contrib.rnn.LSTMCell(layer_elements[-2],
-                                                    use_peepholes=False,
-                                                    cell_clip=None,
-                                                    initializer=None,
-                                                    num_proj=None,
-                                                    proj_clip=None,
-                                                    forget_bias=1.0,
-                                                    state_is_tuple=True,
-                                                    activation=None,
-                                                    reuse=None
-                                                    )
+            lstm_mat, _ = tf.nn.dynamic_rnn(
+                cell=lstm_cell,
+                inputs=combined_data,
+                dtype=tf.float32,
+                sequence_length=seq_length,
+                time_major=False
+            )
 
-                lstm_mat, _ = tf.nn.dynamic_rnn(
-                    cell=lstm_cell,
-                    inputs=combined_data,
-                    dtype=tf.float32,
-                    sequence_length=seq_length,
-                    time_major=False
-                )
+            # if lstm_out is NaN replace with 0 to prevent model breakage
+            lstm_mat = tf.where(tf.is_nan(lstm_mat), tf.zeros_like(lstm_mat), lstm_mat)
+            lstm_mat = check_legal_inputs(lstm_mat, "lstm_mat")
 
-                # if lstm_out is NaN replace with 0 to prevent model breakage
-                lstm_mat = tf.where(tf.is_nan(lstm_mat), tf.zeros_like(lstm_mat), lstm_mat)
-                lstm_mat = check_legal_inputs(lstm_mat, "lstm_mat")
+            # extract relevant information from LSTM output using partiitions
+            num_partitions = 2
+            lstm_out = tf.dynamic_partition(lstm_mat, partitions_ph, num_partitions)[1]
 
-                # extract relevant information from LSTM output using partiitions
-                num_partitions = 2
-                lstm_out = tf.dynamic_partition(lstm_mat, partitions_ph, num_partitions)[1]
+            # FC1
+            fc1_out = tf.matmul(lstm_out, W_lstm) + b_lstm
+            fc1_out = check_legal_inputs(fc1_out, "fc1")
+            self.variable_summaries(fc1_out, "fc1")
 
-                # W_lstm = tf.Print(W_lstm, [W_lstm], message="W_lstm: ")
+            # ---------------------------------------
+            # External Temporal Information (number of promtps)
+            # ---------------------------------------
+            # shape and append prompt information here
+            prompts_ph = tf.reshape(prompts_ph, [-1, layer_elements[-1]])
 
-                # FC1
-                fc1_out = tf.matmul(lstm_out, W_lstm) + b_lstm
-                fc1_out = check_legal_inputs(fc1_out, "fc1")
-                self.variable_summaries(fc1_out, "fc1")
+            # prompts_ph = tf.Print(prompts_ph, [prompts_ph], message="DBN Values: ")
+            # fc1_out = tf.Print(fc1_out, [fc1_out], message="FC1 Values: ")
 
-                # ---------------------------------------
-                # External Temporal Information (number of promtps)
-                # ---------------------------------------
-                # shape and append prompt information here
-                prompts_ph = tf.reshape(prompts_ph, [-1, layer_elements[-1]])
+            fc1_prompt = tf.concat([fc1_out, prompts_ph], 1)
 
-                # prompts_ph = tf.Print(prompts_ph, [prompts_ph], message="DBN Values: ")
-                # W_fc = tf.Print(W_fc, [W_fc], message="w_FC: ")
-                # b_fc = tf.Print(b_fc, [b_fc], message="b_FC: ")
+            # fc1_prompt = tf.Print(fc1_prompt, [fc1_prompt], message="FC1: ", summarize=6)
+            # W_fc = tf.Print(W_fc, [W_fc], message="w_FC: ", summarize=50)
+            # b_fc = tf.Print(b_fc, [b_fc], message="b_FC: ", summarize=50)
 
-                # fc1_out = tf.Print(fc1_out, [fc1_out], message="FC1 Values: ")
+            # FC2: generate final q-values
+            fc2_out = tf.matmul(fc1_prompt, W_fc) + b_fc
+            fc2_out = check_legal_inputs(fc2_out, "fc2")
+            self.variable_summaries(fc2_out, "fc")
 
-                fc1_prompt = tf.concat([fc1_out, prompts_ph], 1)
+            # fc2_out = tf.Print(fc2_out, [fc2_out], message="FC2: ")
+            # fc2_out = tf.Print(fc2_out, [tf.matmul(fc1_prompt, W_fc)], message="previous: ")
 
-                # fc1_prompt = tf.Print(fc1_prompt, [fc1_prompt], message="FC1: ", summarize=6)
-
-                # FC2: generate final q-values
-                fc2_out = tf.matmul(fc1_prompt, W_fc) + b_fc
-                fc2_out = check_legal_inputs(fc2_out, "fc2")
-                self.variable_summaries(fc2_out, "fc")
-
-                # fc2_out = tf.Print(fc2_out, [fc2_out], message="FC2: ")
-                # fc2_out = tf.Print(fc2_out, [tf.matmul(fc1_prompt, W_fc)], message="previous: ")
-
-                return fc2_out
+            return fc2_out
 
 
 if __name__ == '__main__':

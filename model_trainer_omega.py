@@ -2,15 +2,10 @@
 # Madison Clark-Turner
 # 10/13/2017
 
-import numpy as np
-import tensorflow as tf
-from tensorflow.python.client import timeline
-
 # model structure
 from dqn_model_omega_dbn import *
 
 # file io
-from basic_tfrecord_rw import parse_sequence_example
 from input_pipeline import *
 import os
 from os.path import isfile, join
@@ -23,7 +18,7 @@ from datetime import datetime
 from dbn_cnn_interface import DbnCnnInterface
 
 GAMMA = 0.9
-ALPHA = 1e-6
+ALPHA = 1e-5
 NUM_ITER = 30000
 FOLDS = 1
 NUM_REMOVED = 1
@@ -38,8 +33,8 @@ if __name__ == '__main__':
     # Command-Line Parameters
     #################################
     graphbuild = [0] * TOTAL_PARAMS
-    if (len(sys.argv) > 1):
-        if (len(sys.argv[1]) == 1 and int(sys.argv[1]) < 3):
+    if len(sys.argv) > 1:
+        if len(sys.argv[1]) == 1 and int(sys.argv[1]) < 3:
             graphbuild[int(sys.argv[1])] = 1
         else:
             print("Usage: python model_trainer_omega.py <args>")
@@ -79,7 +74,8 @@ if __name__ == '__main__':
     #################################
 
     # if building model from a checkpoint define location here. Otherwise use empty string ""
-    dqn_chkpnt = ""
+    dqn_chkpnt = "./np_omega/model.ckpt"
+    # dqn_chkpnt = ""
     dqn = DQNModel(graphbuild, batch_size=BATCH_SIZE, learning_rate=ALPHA, filename=dqn_chkpnt, \
                    log_dir="LOG_DIR")
 
@@ -169,7 +165,7 @@ if __name__ == '__main__':
                 dqn.aud_ph: aud_data2
                 , dqn.partitions_ph: partitions_2
                 , dqn.train_ph: False
-                , dqn.prompts_ph: dbn_output}
+                , dqn.temporal_info_ph: dbn_output}
 
             # get the maxium q-value from q^hat
             newy = dqn.sess.run(dqn.max_q_hat, feed_dict=vals)
@@ -205,7 +201,7 @@ if __name__ == '__main__':
             dqn.y_ph: r,
             dqn.partitions_ph: partitions_1,
             dqn.train_ph: True,
-            dqn.prompts_ph: dbn_output
+            dqn.temporal_info_ph: dbn_output
         }
 
         prep_t = datetime.now() - ts_it
@@ -249,18 +245,16 @@ if __name__ == '__main__':
         # ---------------------------------------
         if (iteration % 1 == 0):
             # print timing information
-            print(iteration, "total_time:", datetime.now() - ts_it, "prep_time:", prep_t, "switch_time:", switch_t,
-                  "optimization_time:", opt_t)
+            print(iteration, "time:", str(datetime.now()))
 
-        if (iteration % 100 == 0):
+        if (iteration % 1000 == 0):
             # evaluate system accuracy on train dataset
             pred = dqn.sess.run(dqn.pred, feed_dict=vals)
             print("pred: ", pred)
             print("label: ", label_data)
-            print("--------")
-
             acc = dqn.sess.run(dqn.accuracy, feed_dict=vals)
             print("acc of train: ", acc)
+            print
 
         # ---------------------------------------
         # Delayed System Updates
@@ -269,7 +263,7 @@ if __name__ == '__main__':
             # update variables in Q^hat to be the same as in Q
             dqn.assignVariables()
 
-            if (iteration % 1000 == 0):
+            if (iteration % 10000 == 0):
                 # save the model to checkpoint file
                 # overwrite the saved model until 10,000 iterations have passed
                 dir_name = "omega_" + str(iteration / 10000)
