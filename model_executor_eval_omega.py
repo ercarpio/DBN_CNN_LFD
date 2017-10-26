@@ -46,7 +46,7 @@ if __name__ == '__main__':
     #################################
     # Read contents of TFRecord file
     #################################
-    path = "../tfrecords_balanced/"
+    path = "../tfrecords_final_eval/"
     filenames = [f for f in os.listdir(path) if isfile(join(path, f))]
     filenames = [path + x for x in filenames] #if (x.find("g") >= 0 and x.find("ga") < 0)]
     filenames.sort()
@@ -61,7 +61,7 @@ if __name__ == '__main__':
     #################################
     # Generate Model
     #################################
-    chkpt = "../container_files/test/omega_0/model.ckpt"
+    chkpt = "../container_files/np_dbn_unbiased_init/omega_0/model.ckpt"
     dqn = DQNModel(graphbuild, batch_size=BATCH_SIZE, learning_rate=ALPHA,
                    filename=chkpt, log_dir="LOG_DIR", validating=True)
 
