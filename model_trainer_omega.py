@@ -3,7 +3,6 @@
 # 10/13/2017
 
 # FILE IO
-import ConfigParser
 from input_pipeline import *
 import os
 from os.path import isfile, join
