@@ -7,6 +7,7 @@ from __future__ import print_function
 
 import tensorflow as tf
 import numpy as np
+import ConfigParser
 
 # contains information relating to input data size
 from constants import *
@@ -45,99 +46,103 @@ class DQNModel:
     name - string, model name ("dqn" by default)
     learning_rate - float, speed at which the model trains (1e-5 by default)
     log_dir - directory to store summary information (no directory listed by default)
+    validating - indicates if the model is being validated (True) or trained (False)
     """
-    def __init__(self, graphbuild=[1] * TOTAL_PARAMS, batch_size=1,
-                 filename="", name="dqn", learning_rate=1e-5, log_dir="", validating=False):
-        self.graphbuild = graphbuild
+    def __init__(self, graph_build=[1] * TOTAL_PARAMS, batch_size=1, filename="",
+                 name="dqn", learning_rate=1e-5, log_dir="", validating=False):
+        self.graph_build = graph_build
         self.__batch_size = batch_size
         self.__name = name
         self.__alpha = learning_rate
         self.log_dir = log_dir
 
-        # ---------------------------------------
+        # LOADS CONFIGURATION
+        config = ConfigParser.ConfigParser()
+        config.read("config")
+        self.gpu = config.get("MODEL", "GPU")
+
         # Model variables
-        # ---------------------------------------
-        def weight_variable(name, shape):
-            initial = tf.truncated_normal(shape, stddev=0.1)
+        def weight_variable(name, shape, num_inputs):
+            # initial = tf.truncated_normal(shape, stddev=0.1)
+            initial = tf.truncated_normal(shape)
+            # initial = initial / tf.sqrt(num_inputs)
             return tf.Variable(initial, name=name)
 
         def bias_variable(name, shape):
-            initial = tf.constant(0.1, shape=shape)
+            initial = tf.constant(0., shape=shape)
             return tf.Variable(initial, name=name)
 
         # Q variables
         self.variables_pnt = {
             "W1": weight_variable("W_conv1_pnt", [filter_sizes[0], filter_sizes[0],
-                                                  pnt_dtype["num_c"], layer_elements[1]]),
+                                                  pnt_dtype["num_c"], layer_elements[1]], 1),
             "b1": bias_variable("b_conv1_pnt", [layer_elements[1]]),
             "W2": weight_variable("W_conv2_pnt", [filter_sizes[1], filter_sizes[1],
-                                                  layer_elements[1], layer_elements[2]]),
+                                                  layer_elements[1], layer_elements[2]], 1),
             "b2": bias_variable("b_conv2_pnt", [layer_elements[2]]),
             "W3": weight_variable("W_conv3_pnt", [filter_sizes[2], filter_sizes[2],
-                                                  layer_elements[2], layer_elements[-2]]),
+                                                  layer_elements[2], layer_elements[-2]], 1),
             "b3": bias_variable("b_conv3_pnt", [layer_elements[-2]])
         }
 
         self.variables_aud = {
             "W1": weight_variable("W_conv1_aud", [aud_filter_sizes[0][0],
                                                   aud_filter_sizes[0][1], aud_dtype["num_c"],
-                                                  aud_layer_elements[1]]),
+                                                  aud_layer_elements[1]], 1),
             "b1": bias_variable("b_conv1_aud", [aud_layer_elements[1]]),
             "W2": weight_variable("W_conv2_aud", [aud_filter_sizes[1][0],
                                                   aud_filter_sizes[1][1], aud_layer_elements[1],
-                                                  aud_layer_elements[2]]),
+                                                  aud_layer_elements[2]], 1),
             "b2": bias_variable("b_conv2_aud", [aud_layer_elements[2]]),
             "W3": weight_variable("W_conv3_aud", [aud_filter_sizes[2][0],
                                                   aud_filter_sizes[2][1], aud_layer_elements[2],
-                                                  aud_layer_elements[3]]),
+                                                  aud_layer_elements[3]], 1),
             "b3": bias_variable("b_conv3_aud", [aud_layer_elements[3]])
         }
 
         self.variables_lstm = {
-            "W_lstm": weight_variable("W_lstm", [layer_elements[-2], layer_elements[-1]]),
+            "W_lstm": weight_variable("W_lstm", [layer_elements[-2], layer_elements[-1]], 1),
             "b_lstm": bias_variable("b_lstm", [layer_elements[-1]]),
-            "W_fc": weight_variable("W_fc", [layer_elements[-1] * 2, layer_elements[-1]]),
+            "W_fc": weight_variable("W_fc", [layer_elements[-1] * 2, layer_elements[-1]], 1),
             "b_fc": bias_variable("b_fc", [layer_elements[-1]])
         }
 
         # Q^hat variables
         self.variables_pnt_hat = {
             "W1": weight_variable("W_conv1_pnt_hat", [filter_sizes[0], filter_sizes[0],
-                                                      pnt_dtype["num_c"], layer_elements[1]]),
+                                                      pnt_dtype["num_c"], layer_elements[1]], 1),
             "b1": bias_variable("b_conv1_pnt_hat", [layer_elements[1]]),
             "W2": weight_variable("W_conv2_pnt_hat", [filter_sizes[1], filter_sizes[1],
-                                                      layer_elements[1], layer_elements[2]]),
+                                                      layer_elements[1], layer_elements[2]], 1),
             "b2": bias_variable("b_conv2_pnt_hat", [layer_elements[2]]),
             "W3": weight_variable("W_conv3_pnt_hat", [filter_sizes[2], filter_sizes[2],
-                                                      layer_elements[2], layer_elements[-2]]),
+                                                      layer_elements[2], layer_elements[-2]], 1),
             "b3": bias_variable("b_conv3_pnt_hat", [layer_elements[-2]])
         }
 
         self.variables_aud_hat = {
             "W1": weight_variable("W_conv1_aud_hat", [aud_filter_sizes[0][0],
                                                       aud_filter_sizes[0][1], aud_dtype["num_c"],
-                                                      aud_layer_elements[1]]),
+                                                      aud_layer_elements[1]], 1),
             "b1": bias_variable("b_conv1_aud_hat", [aud_layer_elements[1]]),
             "W2": weight_variable("W_conv2_aud_hat", [aud_filter_sizes[1][0],
                                                       aud_filter_sizes[1][1], aud_layer_elements[1],
-                                                      aud_layer_elements[2]]),
+                                                      aud_layer_elements[2]], 1),
             "b2": bias_variable("b_conv2_aud_hat", [aud_layer_elements[2]]),
             "W3": weight_variable("W_conv3_aud_hat", [aud_filter_sizes[2][0],
                                                       aud_filter_sizes[2][1], aud_layer_elements[2],
-                                                      aud_layer_elements[3]]),
+                                                      aud_layer_elements[3]], 1),
             "b3": bias_variable("b_conv3_aud_hat", [aud_layer_elements[3]])
         }
 
         self.variables_lstm_hat = {
-            "W_lstm": weight_variable("W_lstm_hat", [layer_elements[-2], layer_elements[-1]]),
+            "W_lstm": weight_variable("W_lstm_hat", [layer_elements[-2], layer_elements[-1]], 1),
             "b_lstm": bias_variable("b_lstm_hat", [layer_elements[-1]]),
-            "W_fc": weight_variable("W_fc_hat", [layer_elements[-1] * 2, layer_elements[-1]]),
+            "W_fc": weight_variable("W_fc_hat", [layer_elements[-1] * 2, layer_elements[-1]], 1),
             "b_fc": bias_variable("b_fc_hat", [layer_elements[-1]])
         }
 
-        # ---------------------------------------
         # Placeholder variables
-        # ---------------------------------------
         # placeholder for the RGB data
         self.img_ph = tf.placeholder("float",
                                      [self.__batch_size, None,
@@ -174,21 +179,17 @@ class DQNModel:
         # placeholder for the reward values to classify with
         self.y_ph = tf.placeholder("float", [None, layer_elements[-1]], name="y_placeholder")
 
-        # ---------------------------------------
         # Model functions
-        # ---------------------------------------
         self.pred_var_set = self.execute_model_DQN_var_set()  # used to initialize variables
         self.pred = self.execute_model_DQN()  # used for training
         self.pred_hat = self.execute_model_DQN_hat()  # used to evaluate q_hat
         self.max_q_hat = tf.reduce_max(self.pred_hat, axis=1)
-        self.pred_index = tf.argmax(self.pred, 1)
+
         # inception variables
         self.variables_img = {}
-
         exclusions = ["InceptionResnetV2/Logits", "InceptionResnetV2/AuxLogits"]
 
-        variables_to_restore = []
-        if (self.graphbuild[0]):
+        if self.graph_build[0]:
             slim.assign_from_checkpoint_fn(CHECKPOINT, slim.get_model_variables())
 
         variables_to_train = [x for x in tf.trainable_variables()
@@ -211,11 +212,8 @@ class DQNModel:
         self.accuracy = tf.reduce_mean(tf.cast(self.correct_pred, tf.float32))
         tf.summary.scalar('accuracy', self.accuracy)
 
-        self.predict_output = tf.argmax(self.pred, 1)
-
         # session
         self.sess = tf.InteractiveSession(config=tf.ConfigProto(allow_soft_placement=True))
-
         self.loader = tf.train.Saver(var_list=[x for x in tf.trainable_variables()
                                               if x not in variables_to_train])
         self.saver = tf.train.Saver()
@@ -228,7 +226,7 @@ class DQNModel:
         self.test_writer = tf.summary.FileWriter(self.log_dir + '/test')
         self.graph_writer = tf.summary.FileWriter(self.log_dir + '/projector', self.sess.graph)
 
-        if (len(filename) == 0):
+        if len(filename) == 0:
             init_op = tf.global_variables_initializer()
             self.sess.run(init_op)  # remove when using a saved file
         else:
@@ -237,8 +235,8 @@ class DQNModel:
             print("RESTORING VALUES")
             self.loader.restore(self.sess, filename)
 
-    def saveModel(self, name="model.ckpt", save_dir=""):
-        path = self.saver.save(self.sess, save_dir + '/' + name)
+    def save_model(self, name="model.ckpt", save_dir=""):
+        self.saver.save(self.sess, save_dir + '/' + name)
 
     def restore_q_hat_vars(self, src, dst):
         arr = []
@@ -251,7 +249,7 @@ class DQNModel:
             v = np.array(seq).reshape(np.array(seq).shape)
             var.load(v, session=self.sess)
 
-    def assignVariables(self):
+    def assign_variables(self):
         # for the inception network variables
         self.restore_q_hat_vars(self.variables_img_main, self.variables_img_hat)
 
@@ -260,7 +258,7 @@ class DQNModel:
         self.restore_q_hat_vars(self.variables_aud, self.variables_aud_hat)
         self.restore_q_hat_vars(self.variables_lstm, self.variables_lstm_hat)
 
-    def genPrediction(self, num_frames, img_data, pnt_data, aud_data, num_prompts):
+    def gen_prediction(self, num_frames, img_data, pnt_data, aud_data, num_prompts):
         # used by the ASD robot
         partitions = np.zeros((1, num_frames))
         print("partitions.shape: ", partitions.shape)
@@ -340,21 +338,16 @@ class DQNModel:
             tf.summary.scalar('min', tf.reduce_min(var))
             tf.summary.histogram('histogram', var)
 
-            #####################
-            ##### THE MODEL #####
-            #####################
-
+    # THE MODEL
     def model(self, seq_length, img_ph, pnt_ph, aud_ph, partitions_ph, train_ph,
               prompts_ph, variable_scope, variable_scope2, var_img, var_pnt,
               var_aud, var_lstm, incep_reuse=True):  #
 
-
         def process_vars(seq, data_type):
             # cast inputs to the correct data type
             seq_inp = tf.cast(seq, tf.float32)
-            return tf.reshape(seq_inp,
-                              (self.__batch_size, -1, data_type["cmp_h"],
-                               data_type["cmp_w"], data_type["num_c"]))
+            return tf.reshape(seq_inp, (self.__batch_size, -1, data_type["cmp_h"],
+                                        data_type["cmp_w"], data_type["num_c"]))
 
         def convolve_data_inception(input_data, val, n, dtype):
             data = tf.reshape(input_data, [-1, 299, 299, 3])
@@ -375,156 +368,140 @@ class DQNModel:
 
             def gen_convolved_output(sequence, W, b, stride, num_hidden,
                                      new_size, train_ph, padding='SAME'):
-                conv = tf.nn.conv2d(sequence, W,
-                                    strides=[1, stride, stride, 1], padding=padding) + b
+                conv = tf.nn.conv2d(sequence, W, strides=[1, stride, stride, 1],
+                                    padding=padding) + b
                 return tf.nn.relu(conv)
 
-            input_data = tf.reshape(input_data, [-1, dtype["cmp_h"], dtype["cmp_w"], dtype["num_c"]],
-                                    name=n + "_inp_reshape")
+            input_data = tf.reshape(input_data, [-1, dtype["cmp_h"], dtype["cmp_w"],
+                                                 dtype["num_c"]], name=n + "_inp_reshape")
 
-            # input_data = tf.Print(input_data, [tf.shape(input_data)], message="out1_n: ")
             input_data = pad_tf(input_data, padding_size[0])
             padding = "VALID"
 
-            input_data = gen_convolved_output(input_data, variables["W1"], variables["b1"], stride_sizes[0],
-                                              layer_elements[1], output_sizes[0], train_ph, padding)
+            input_data = gen_convolved_output(input_data, variables["W1"], variables["b1"],
+                                              stride_sizes[0], layer_elements[1],
+                                              output_sizes[0], train_ph, padding)
             self.variable_summaries(input_data, dtype["name"] + "_conv1")
-            input_data = tf.verify_tensor_all_finite(
-                input_data,
-                "ERR: Tensor not finite - ",
-                name="conv1_" + n
-            )
+            input_data = tf.verify_tensor_all_finite(input_data, "ERR: Tensor not finite - ",
+                                                     name="conv1_" + n)
 
-            # input_data = tf.Print(input_data, [tf.shape(input_data)], message="out2_n: ")
             input_data = pad_tf(input_data, padding_size[1])
             padding = "VALID"
 
-            input_data = gen_convolved_output(input_data, variables["W2"], variables["b2"], stride_sizes[1],
-                                              layer_elements[2], output_sizes[1], train_ph, padding)
+            input_data = gen_convolved_output(input_data, variables["W2"], variables["b2"],
+                                              stride_sizes[1], layer_elements[2],
+                                              output_sizes[1], train_ph, padding)
             self.variable_summaries(input_data, dtype["name"] + "_conv2")
-            input_data = tf.verify_tensor_all_finite(
-                input_data,
-                "ERR: Tensor not finite - ",
-                name="conv2_" + n
-            )
+            input_data = tf.verify_tensor_all_finite(input_data, "ERR: Tensor not finite - ",
+                                                     name="conv2_" + n)
 
-            # input_data = tf.Print(input_data, [tf.shape(input_data)], message="out3_n: ")
             input_data = pad_tf(input_data, padding_size[2])
             padding = "VALID"
 
-            input_data = gen_convolved_output(input_data, variables["W3"], variables["b3"], stride_sizes[-1],
-                                              layer_elements[-2], output_sizes[-1], train_ph, padding)
+            input_data = gen_convolved_output(input_data, variables["W3"], variables["b3"],
+                                              stride_sizes[-1], layer_elements[-2],
+                                              output_sizes[-1], train_ph, padding)
             self.variable_summaries(input_data, dtype["name"] + "_conv3")
-            input_data = tf.verify_tensor_all_finite(
-                input_data,
-                "ERR: Tensor not finite - ",
-                name="conv3_" + n
-            )
-
-            # input_data = tf.Print(input_data, [tf.shape(input_data)], message="out4_n: ")
-
+            input_data = tf.verify_tensor_all_finite(input_data, "ERR: Tensor not finite - ",
+                                                     name="conv3_" + n)
             return input_data
 
         def convolve_data_3layer_aud(input_data, val, variables, n, dtype):
             def pad_tf(x, padding):
-                return tf.pad(x, [[0, 0], [padding[0], padding[0]], [padding[1], padding[1]], [0, 0]], "CONSTANT")
+                return tf.pad(x, [[0, 0], [padding[0], padding[0]],
+                                  [padding[1], padding[1]], [0, 0]], "CONSTANT")
 
-            def gen_convolved_output(sequence, W, b, stride, num_hidden, new_size, train_ph, padding='SAME'):
-                conv = tf.nn.conv2d(sequence, W, strides=[1, stride[0], stride[1], 1], padding=padding) + b
+            def gen_convolved_output(sequence, W, b, stride, num_hidden,
+                                     new_size, train_ph, padding='SAME'):
+                conv = tf.nn.conv2d(sequence, W, strides=[1, stride[0], stride[1], 1],
+                                    padding=padding) + b
                 return tf.nn.relu(conv)
 
-            input_data = tf.reshape(input_data, [-1, dtype["cmp_h"], dtype["cmp_w"], dtype["num_c"]],
-                                    name=n + "_inp_reshape")
+            input_data = tf.reshape(input_data, [-1, dtype["cmp_h"], dtype["cmp_w"],
+                                                 dtype["num_c"]], name=n + "_inp_reshape")
 
-            # input_data = tf.Print(input_data, [tf.shape(input_data)], message="out1_a: ")
             input_data = pad_tf(input_data, aud_padding_size[0])
             padding = "VALID"
 
-            input_data = gen_convolved_output(input_data, variables["W1"], variables["b1"], aud_stride_sizes[0],
-                                              aud_layer_elements[1], aud_output_sizes[0], train_ph, padding)
+            input_data = gen_convolved_output(input_data, variables["W1"], variables["b1"],
+                                              aud_stride_sizes[0], aud_layer_elements[1],
+                                              aud_output_sizes[0], train_ph, padding)
             self.variable_summaries(input_data, dtype["name"] + "_conv1")
-            input_data = tf.verify_tensor_all_finite(
-                input_data,
-                "ERR: Tensor not finite - conv1_" + n,
-                name="conv1_" + n
-            )
+            input_data = tf.verify_tensor_all_finite(input_data,
+                                                     "ERR: Tensor not finite - conv1_" + n,
+                                                     name="conv1_" + n)
 
-            # input_data = tf.Print(input_data, [tf.shape(input_data)], message="out2_a: ")
             input_data = pad_tf(input_data, aud_padding_size[1])
             padding = "VALID"
 
-            input_data = gen_convolved_output(input_data, variables["W2"], variables["b2"], aud_stride_sizes[1],
-                                              aud_layer_elements[2], aud_output_sizes[1], train_ph, padding)
+            input_data = gen_convolved_output(input_data, variables["W2"], variables["b2"],
+                                              aud_stride_sizes[1], aud_layer_elements[2],
+                                              aud_output_sizes[1], train_ph, padding)
             self.variable_summaries(input_data, dtype["name"] + "_conv2")
-            input_data = tf.verify_tensor_all_finite(
-                input_data,
-                "ERR: Tensor not finite - conv2_" + n,
-                name="conv2_" + n
-            )
+            input_data = tf.verify_tensor_all_finite(input_data,
+                                                     "ERR: Tensor not finite - conv2_" + n,
+                                                     name="conv2_" + n)
 
-            # input_data = tf.Print(input_data, [tf.shape(input_data)], message="out3_a: ")
             input_data = pad_tf(input_data, aud_padding_size[2])
             padding = "VALID"
 
-            input_data = gen_convolved_output(input_data, variables["W3"], variables["b3"], aud_stride_sizes[2],
-                                              aud_layer_elements[3], aud_output_sizes[2], train_ph, padding)
+            input_data = gen_convolved_output(input_data, variables["W3"], variables["b3"],
+                                              aud_stride_sizes[2], aud_layer_elements[3],
+                                              aud_output_sizes[2], train_ph, padding)
             self.variable_summaries(input_data, dtype["name"] + "_conv3")
-            input_data = tf.verify_tensor_all_finite(
-                input_data,
-                "ERR: Tensor not finite - conv3_" + n,
-                name="conv3_" + n
-            )
-
+            input_data = tf.verify_tensor_all_finite(input_data,
+                                                     "ERR: Tensor not finite - conv3_" + n,
+                                                     name="conv3_" + n)
             return input_data
 
-        # ---------------------------------------
         # CNN Stacks
-        # ---------------------------------------
-
         # Storage Variables
         # 0 - RGB, 1 - Optical Flow, 2 - Audio
         inp_data = [0] * TOTAL_PARAMS
         conv_inp = [0] * TOTAL_PARAMS
 
-        with tf.device('/gpu:0'):
-
+        with tf.device(self.gpu):
             # Inception Network (INRV2)
-            if (self.graphbuild[0]):
+            if self.graph_build[0]:
                 val = 0
                 inp_data[val] = process_vars(img_ph, img_dtype)
                 conv_inp[val] = convolve_data_inception(inp_data[val], val, "img", img_dtype)
 
             with variable_scope as scope:
-
                 # P_CNN
-                if (self.graphbuild[1]):
+                if self.graph_build[1]:
                     val = 1
                     inp_data[val] = process_vars(pnt_ph, pnt_dtype)
-                    conv_inp[val] = convolve_data_3layer_pnt(inp_data[val], val, var_pnt, "pnt", pnt_dtype)
+                    conv_inp[val] = convolve_data_3layer_pnt(inp_data[val], val, var_pnt,
+                                                             "pnt", pnt_dtype)
 
                 # A_CNN
-                if (self.graphbuild[2]):
+                if self.graph_build[2]:
                     val = 2
                     inp_data[val] = process_vars(aud_ph, aud_dtype)
-                    conv_inp[val] = convolve_data_3layer_aud(inp_data[val], val, var_aud, "aud", aud_dtype)
+                    conv_inp[val] = convolve_data_3layer_aud(inp_data[val], val, var_aud,
+                                                             "aud", aud_dtype)
 
-                # ---------------------------------------
                 # Combine Output of CNN Stacks
-                # ---------------------------------------
                 combined_data = None
                 for i in range(TOTAL_PARAMS):
-
-                    if (self.graphbuild[i]):
-                        if (i < 2):
-                            conv_inp[i] = tf.reshape(conv_inp[i], [self.__batch_size, -1,
-                                                                   output_sizes[-1] * output_sizes[-1] * layer_elements[
-                                                                       -2]], name="combine_reshape")
+                    if self.graph_build[i]:
+                        if i < 2:
+                            conv_inp[i] = tf.reshape(conv_inp[i],
+                                                     [self.__batch_size, -1,
+                                                      output_sizes[-1] *
+                                                      output_sizes[-1] *
+                                                      layer_elements[-2]],
+                                                     name="combine_reshape")
                         else:
-                            conv_inp[i] = tf.reshape(conv_inp[i], [self.__batch_size, -1,
-                                                                   aud_output_sizes[-1][0] * aud_output_sizes[-1][0] *
-                                                                   aud_layer_elements[-2]], name="combine_reshape_aud")
+                            conv_inp[i] = tf.reshape(conv_inp[i],
+                                                     [self.__batch_size, -1,
+                                                      aud_output_sizes[-1][0] *
+                                                      aud_output_sizes[-1][0] *
+                                                      aud_layer_elements[-2]],
+                                                     name="combine_reshape_aud")
 
-                        if (combined_data == None):
+                        if combined_data is None:
                             combined_data = conv_inp[i]
                         else:
                             combined_data = tf.concat([combined_data, conv_inp[i]], 2)
@@ -538,68 +515,38 @@ class DQNModel:
                 b_fc = var_lstm["b_fc"]
 
             with variable_scope2 as scope:
-                # ---------------------------------------
                 # Internal Temporal Information (LSTM)
-                # ---------------------------------------
-                lstm_cell = tf.contrib.rnn.LSTMCell(layer_elements[-2],
-                                                    use_peepholes=False,
-                                                    cell_clip=None,
-                                                    initializer=None,
-                                                    num_proj=None,
-                                                    proj_clip=None,
-                                                    forget_bias=1.0,
-                                                    state_is_tuple=True,
-                                                    activation=None,
-                                                    reuse=None
-                                                    )
+                lstm_cell = tf.contrib.rnn.LSTMCell(layer_elements[-2], use_peepholes=False,
+                                                    cell_clip=None, initializer=None,
+                                                    num_proj=None, proj_clip=None,
+                                                    forget_bias=1.0, state_is_tuple=True,
+                                                    activation=None, reuse=None)
 
-                lstm_mat, _ = tf.nn.dynamic_rnn(
-                    cell=lstm_cell,
-                    inputs=combined_data,
-                    dtype=tf.float32,
-                    sequence_length=seq_length,
-                    time_major=False
-                )
+                lstm_mat, _ = tf.nn.dynamic_rnn(cell=lstm_cell, inputs=combined_data,
+                                                dtype=tf.float32, sequence_length=seq_length,
+                                                time_major=False)
 
                 # if lstm_out is NaN replace with 0 to prevent model breakage
                 lstm_mat = tf.where(tf.is_nan(lstm_mat), tf.zeros_like(lstm_mat), lstm_mat)
                 lstm_mat = check_legal_inputs(lstm_mat, "lstm_mat")
 
-                # extract relevant information from LSTM output using partiitions
+                # extract relevant information from LSTM output using partitions
                 num_partitions = 2
                 lstm_out = tf.dynamic_partition(lstm_mat, partitions_ph, num_partitions)[1]
-
-                # W_lstm = tf.Print(W_lstm, [W_lstm], message="W_lstm: ")
 
                 # FC1
                 fc1_out = tf.matmul(lstm_out, W_lstm) + b_lstm
                 fc1_out = check_legal_inputs(fc1_out, "fc1")
                 self.variable_summaries(fc1_out, "fc1")
 
-                # ---------------------------------------
-                # External Temporal Information (number of promtps)
-                # ---------------------------------------
-                # shape and append prompt information here
+                # External Temporal Information (using DBN)
                 prompts_ph = tf.reshape(prompts_ph, [-1, layer_elements[-1]])
-
-                # prompts_ph = tf.Print(prompts_ph, [prompts_ph], message="DBN Values: ")
-                # W_fc = tf.Print(W_fc, [W_fc], message="w_FC: ")
-                # b_fc = tf.Print(b_fc, [b_fc], message="b_FC: ")
-
-                # fc1_out = tf.Print(fc1_out, [fc1_out], message="FC1 Values: ")
-
                 fc1_prompt = tf.concat([fc1_out, prompts_ph], 1)
-
-                # fc1_prompt = tf.Print(fc1_prompt, [fc1_prompt], message="FC1: ", summarize=6)
 
                 # FC2: generate final q-values
                 fc2_out = tf.matmul(fc1_prompt, W_fc) + b_fc
                 fc2_out = check_legal_inputs(fc2_out, "fc2")
                 self.variable_summaries(fc2_out, "fc")
-
-                # fc2_out = tf.Print(fc2_out, [fc2_out], message="FC2: ")
-                # fc2_out = tf.Print(fc2_out, [tf.matmul(fc1_prompt, W_fc)], message="previous: ")
-
                 return fc2_out
 
 

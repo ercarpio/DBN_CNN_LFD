@@ -66,7 +66,7 @@ if __name__ == '__main__':
 
     # if building from checkpoint need to setup dqn_hat variables
     if dqn_checkpoint != "":
-        dqn.assignVariables()
+        dqn.assign_variables()
 
     # Train Model
     coord = tf.train.Coordinator()
@@ -204,20 +204,20 @@ if __name__ == '__main__':
         # Delayed System Updates
         if iteration % updates_freq == 0:
             # update variables in Q^hat to be the same as in Q
-            dqn.assignVariables()
+            dqn.assign_variables()
 
         if iteration % checkpoint_freq == 0:
             # save the model to checkpoint file
             dir_name = "omega_" + str(iteration / checkpoint_freq)
             if not os.path.exists(dir_name):
                 os.makedirs(dir_name)
-            dqn.saveModel(save_dir=dir_name)
+            dqn.save_model(save_dir=dir_name)
 
     # FINISH
     # save final model to checkpoint file
     dir_name = "omega_final"
     if not os.path.exists(dir_name):
         os.makedirs(dir_name)
-    dqn.saveModel(save_dir=dir_name)
+    dqn.save_model(save_dir=dir_name)
 
     print("time end: ", datetime.now())
