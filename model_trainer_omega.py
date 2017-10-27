@@ -191,7 +191,7 @@ if __name__ == '__main__':
             # print timing information
             print(iteration, "time:", str(datetime.now()))
 
-        if iteration % prediction_freq == 0:
+        if iteration + 1 % prediction_freq == 0:
             # evaluate system accuracy on train data set
             pred = dqn.sess.run(dqn.pred, feed_dict=vals)
             print("pred: ", pred)

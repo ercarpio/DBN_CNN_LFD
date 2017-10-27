@@ -62,10 +62,11 @@ class DQNModel:
         self.gpu = config.get("MODEL", "GPU")
 
         # Model variables
-        def weight_variable(name, shape, num_inputs):
+        # noinspection PyCompatibility
+        def weight_variable(name, shape):
             # initial = tf.truncated_normal(shape, stddev=0.1)
             initial = tf.truncated_normal(shape)
-            # initial = initial / tf.sqrt(num_inputs)
+            initial = tf.div(initial, tf.sqrt(float(reduce(lambda a, b: a * b, shape))))
             return tf.Variable(initial, name=name)
 
         def bias_variable(name, shape):
@@ -75,70 +76,70 @@ class DQNModel:
         # Q variables
         self.variables_pnt = {
             "W1": weight_variable("W_conv1_pnt", [filter_sizes[0], filter_sizes[0],
-                                                  pnt_dtype["num_c"], layer_elements[1]], 1),
+                                                  pnt_dtype["num_c"], layer_elements[1]]),
             "b1": bias_variable("b_conv1_pnt", [layer_elements[1]]),
             "W2": weight_variable("W_conv2_pnt", [filter_sizes[1], filter_sizes[1],
-                                                  layer_elements[1], layer_elements[2]], 1),
+                                                  layer_elements[1], layer_elements[2]]),
             "b2": bias_variable("b_conv2_pnt", [layer_elements[2]]),
             "W3": weight_variable("W_conv3_pnt", [filter_sizes[2], filter_sizes[2],
-                                                  layer_elements[2], layer_elements[-2]], 1),
+                                                  layer_elements[2], layer_elements[-2]]),
             "b3": bias_variable("b_conv3_pnt", [layer_elements[-2]])
         }
 
         self.variables_aud = {
             "W1": weight_variable("W_conv1_aud", [aud_filter_sizes[0][0],
                                                   aud_filter_sizes[0][1], aud_dtype["num_c"],
-                                                  aud_layer_elements[1]], 1),
+                                                  aud_layer_elements[1]]),
             "b1": bias_variable("b_conv1_aud", [aud_layer_elements[1]]),
             "W2": weight_variable("W_conv2_aud", [aud_filter_sizes[1][0],
                                                   aud_filter_sizes[1][1], aud_layer_elements[1],
-                                                  aud_layer_elements[2]], 1),
+                                                  aud_layer_elements[2]]),
             "b2": bias_variable("b_conv2_aud", [aud_layer_elements[2]]),
             "W3": weight_variable("W_conv3_aud", [aud_filter_sizes[2][0],
                                                   aud_filter_sizes[2][1], aud_layer_elements[2],
-                                                  aud_layer_elements[3]], 1),
+                                                  aud_layer_elements[3]]),
             "b3": bias_variable("b_conv3_aud", [aud_layer_elements[3]])
         }
 
         self.variables_lstm = {
-            "W_lstm": weight_variable("W_lstm", [layer_elements[-2], layer_elements[-1]], 1),
+            "W_lstm": weight_variable("W_lstm", [layer_elements[-2], layer_elements[-1]]),
             "b_lstm": bias_variable("b_lstm", [layer_elements[-1]]),
-            "W_fc": weight_variable("W_fc", [layer_elements[-1] * 2, layer_elements[-1]], 1),
+            "W_fc": weight_variable("W_fc", [layer_elements[-1] * 2, layer_elements[-1]]),
             "b_fc": bias_variable("b_fc", [layer_elements[-1]])
         }
 
         # Q^hat variables
         self.variables_pnt_hat = {
             "W1": weight_variable("W_conv1_pnt_hat", [filter_sizes[0], filter_sizes[0],
-                                                      pnt_dtype["num_c"], layer_elements[1]], 1),
+                                                      pnt_dtype["num_c"], layer_elements[1]]),
             "b1": bias_variable("b_conv1_pnt_hat", [layer_elements[1]]),
             "W2": weight_variable("W_conv2_pnt_hat", [filter_sizes[1], filter_sizes[1],
-                                                      layer_elements[1], layer_elements[2]], 1),
+                                                      layer_elements[1], layer_elements[2]]),
             "b2": bias_variable("b_conv2_pnt_hat", [layer_elements[2]]),
             "W3": weight_variable("W_conv3_pnt_hat", [filter_sizes[2], filter_sizes[2],
-                                                      layer_elements[2], layer_elements[-2]], 1),
+                                                      layer_elements[2], layer_elements[-2]]),
             "b3": bias_variable("b_conv3_pnt_hat", [layer_elements[-2]])
         }
 
         self.variables_aud_hat = {
             "W1": weight_variable("W_conv1_aud_hat", [aud_filter_sizes[0][0],
                                                       aud_filter_sizes[0][1], aud_dtype["num_c"],
-                                                      aud_layer_elements[1]], 1),
+                                                      aud_layer_elements[1]]),
             "b1": bias_variable("b_conv1_aud_hat", [aud_layer_elements[1]]),
             "W2": weight_variable("W_conv2_aud_hat", [aud_filter_sizes[1][0],
                                                       aud_filter_sizes[1][1], aud_layer_elements[1],
-                                                      aud_layer_elements[2]], 1),
+                                                      aud_layer_elements[2]]),
             "b2": bias_variable("b_conv2_aud_hat", [aud_layer_elements[2]]),
             "W3": weight_variable("W_conv3_aud_hat", [aud_filter_sizes[2][0],
                                                       aud_filter_sizes[2][1], aud_layer_elements[2],
-                                                      aud_layer_elements[3]], 1),
+                                                      aud_layer_elements[3]]),
             "b3": bias_variable("b_conv3_aud_hat", [aud_layer_elements[3]])
         }
 
         self.variables_lstm_hat = {
-            "W_lstm": weight_variable("W_lstm_hat", [layer_elements[-2], layer_elements[-1]], 1),
+            "W_lstm": weight_variable("W_lstm_hat", [layer_elements[-2], layer_elements[-1]]),
             "b_lstm": bias_variable("b_lstm_hat", [layer_elements[-1]]),
-            "W_fc": weight_variable("W_fc_hat", [layer_elements[-1] * 2, layer_elements[-1]], 1),
+            "W_fc": weight_variable("W_fc_hat", [layer_elements[-1] * 2, layer_elements[-1]]),
             "b_fc": bias_variable("b_fc_hat", [layer_elements[-1]])
         }
 
@@ -547,6 +548,7 @@ class DQNModel:
                 fc2_out = tf.matmul(fc1_prompt, W_fc) + b_fc
                 fc2_out = check_legal_inputs(fc2_out, "fc2")
                 self.variable_summaries(fc2_out, "fc")
+
                 return fc2_out
 
 
