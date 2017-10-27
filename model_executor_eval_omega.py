@@ -47,13 +47,14 @@ if __name__ == '__main__':
                    filename=dqn_checkpoint, log_dir="LOG_DIR", validating=True)
 
     # Train Model
-    dqn.sess.run(tf.local_variables_initializer())
     coord = tf.train.Coordinator()
-    threads = tf.train.start_queue_runners(coord=coord, sess=dqn.sess)
 
     slen_t, slen_pr_t, i_t, p_t, a_t, pl_t, l_t, i_pr_t, p_pr_t, a_pr_t, name_t = \
         input_pipeline(file_names)
     l_t = tf.squeeze(l_t, [1])
+
+    dqn.sess.run(tf.local_variables_initializer())
+    threads = tf.train.start_queue_runners(coord=coord, sess=dqn.sess)
 
     # TESTING
     print("BEGIN TESTING")
@@ -62,9 +63,9 @@ if __name__ == '__main__':
 
     for iteration in range(num_iter):
         print("iteration: ", iteration)
-        n_seq, n_seq2, img_data, pnt_data, aud_data, num_prompts, label_data, \
-        img_data2, pnt_data2, aud_data2, names = dqn.sess.run(
-            [slen_t, slen_pr_t, i_t, p_t, a_t, pl_t, l_t, i_pr_t, p_pr_t, a_pr_t, name_t])
+        n_seq, n_seq2, img_data, pnt_data, aud_data, num_prompts, label_data, img_data2, \
+        pnt_data2, aud_data2, names = dqn.sess.run([slen_t, slen_pr_t, i_t, p_t, a_t, pl_t,
+                                                    l_t, i_pr_t, p_pr_t, a_pr_t, name_t])
 
         print(n_seq, img_data.shape)
         partitions_1 = np.zeros((BATCH_SIZE, np.max(n_seq)))
