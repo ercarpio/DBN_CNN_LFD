@@ -1,20 +1,19 @@
 [TRAINING]
 GAMMA = 0.9
-ALPHA = 1e-6
+ALPHA = 5e-5
 NUM_ITER = 30000
 TFRECORDS_PATH = ../tfrecords_balanced/
 DQN_CHECKPOINT = ./np_omega/model.ckpt
-METRICS_FREQ = 1
+METRICS_FREQ = 10
 PREDICTION_FREQ = 100000
 UPDATES_FREQ = 100
 CHECKPOINT_FREQ = 10000
 
 [EVALUATION]
-GAMMA = 0.9
 ALPHA = 1e-6
 NUM_ITER = 100
 TFRECORDS_PATH = ../tfrecords_balanced/
-DQN_CHECKPOINT = ./omega_2/model.ckpt
+DQN_CHECKPOINT = ../container_files/new_weights/omega_final/model.ckpt
 
 [MODEL]
 GPU = /gpu:0
